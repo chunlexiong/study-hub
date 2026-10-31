@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cosmos — A little closer to everything</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#030611;color:#edf2ff;font-family:Arial,Helvetica,sans-serif}
+#space{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+header{position:absolute;top:30px;left:34px;right:34px;display:flex;justify-content:space-between;align-items:center;pointer-events:none}
+.logo{font-size:15px;letter-spacing:7px;font-weight:bold}.logo span{color:#92cfff}
+.tag{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#92a1ba}
+.intro{position:absolute;top:112px;left:36px;pointer-events:none;max-width:450px}
+.eyebrow{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#8fafd1}
+h1{font-size:clamp(34px,5vw,66px);font-weight:400;letter-spacing:-2px;line-height:1.04;margin:15px 0}
+.subtitle{font-size:13px;line-height:1.7;color:#9daec9;max-width:300px}
+.controls{position:absolute;top:82px;right:30px;display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end;max-width:340px}
+button{font:12px Arial;color:#c4d2e8;background:#101a2ba8;border:1px solid #ffffff20;border-radius:24px;padding:10px 15px;cursor:pointer;backdrop-filter:blur(14px);transition:.2s}
+button:hover{background:#223751cc;border-color:#8ccaff80}button.active{background:#b9dcff;color:#11273e;border-color:#b9dcff}button:focus-visible,input:focus-visible{outline:2px solid #bee1ff;outline-offset:4px}
+.bottom{position:absolute;bottom:27px;left:28px;right:28px}
+.planetbar{display:flex;justify-content:center;gap:7px;overflow-x:auto;padding:10px 0;scrollbar-width:none}
+.planet{min-width:72px;flex-shrink:0;padding:10px 12px;border-radius:15px;display:flex;flex-direction:column;align-items:center;gap:9px;background:#10162699;font-size:10px;letter-spacing:.3px}
+.dot{display:block;width:19px;height:19px;border-radius:100%;background:var(--c);box-shadow:inset -5px -2px 6px #0009,0 0 10px color-mix(in srgb,var(--c),transparent 78%)}
+.planet.active .dot{box-shadow:inset -5px -2px 6px #0006}
+.footer{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px 16px;color:#788ba7;font-size:10px;margin-top:12px;letter-spacing:.2px}.music-credit a{color:#a4c4e7;text-decoration:underline;text-underline-offset:2px}
+.speed{display:flex;gap:10px;align-items:center}.speed input{width:90px;accent-color:#bbddff}.guide{position:absolute;right:35px;bottom:170px;text-align:right;font-size:11px;color:#8498b6;line-height:1.9}
+#badge{display:inline-block;margin-top:16px;color:#a4c4e7;border:1px solid #ffffff20;border-radius:20px;padding:7px 11px;font-size:10px;letter-spacing:.5px;background:#07102080}
+#error{display:none;position:absolute;inset:0;place-content:center;padding:30px;text-align:center;background:#08111f}
+@media(max-width:680px){header{top:22px;left:22px;right:22px}.tag{display:none}.intro{top:152px;left:24px}.controls{top:60px;left:20px;right:20px;max-width:none;justify-content:flex-start}h1{font-size:40px}.subtitle{font-size:12px;max-width:230px}.bottom{left:14px;right:14px;bottom:16px}.planetbar{justify-content:flex-start}.planet{min-width:65px}.guide{display:none}.footer{align-items:flex-start;font-size:9px}.footer>span:first-child{max-width:185px}.music-credit{order:3;width:100%}.speed input{width:65px}}
+</style>
+</head>
+<body>
+<canvas id="space" aria-label="Interactive three-dimensional solar system. Drag to rotate, scroll or pinch to zoom."></canvas>
+<header><div class="logo">C<span>O</span>SMOS</div><div class="tag">A little closer to everything</div></header>
+<div class="intro"><div class="eyebrow" id="eyebrow">Our celestial neighbourhood</div><h1 id="title">The solar system.</h1><div class="subtitle" id="subtitle">Eight worlds. One extraordinary journey.<br>Choose a planet, or enjoy the tour.</div><div id="badge">AUTOMATIC TOUR</div></div>
+<div class="controls">
+<button id="tour" class="active">Tour on</button>
+<button id="play">Pause</button>
+<button id="orbits" class="active">Orbits</button>
+<button id="music" type="button" aria-pressed="false">♫ Music off</button>
+<button id="full">Full screen</button>
+</div>
+<audio id="spaceMusic" src="assets/audio/sb_adriftamonginfinitestars.mp3" preload="none" loop></audio>
+<div class="guide">Drag to look around<br>Scroll or pinch to move closer</div>
+<div class="bottom">
+<div class="planetbar" id="planets"></div>
+<div class="footer"><span>Artistic illustration · Sizes, distances and motion adjusted for visibility</span><span class="music-credit">Music: <a href="https://www.scottbuckley.com.au/library/adrift-among-infinite-stars/" target="_blank" rel="noopener">“Adrift Among Infinite Stars”</a> by Scott Buckley · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a> · <a href="https://www.scottbuckley.com.au/" target="_blank" rel="noopener">scottbuckley.com.au</a></span><label class="speed">Motion <input id="speed" aria-label="Orbit speed" type="range" min="0" max="2" value=".55" step=".05"></label></div>
+</div>
+<div id="error">This demo needs a browser with WebGL enabled.</div>
+<script>
+(()=>{
+const canvas=document.getElementById('space');
+const gl=canvas.getContext('webgl',{antialias:false,alpha:false,powerPreference:'high-performance'});
+if(!gl){document.getElementById('error').style.display='grid';return;}
+const vertex=`attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}`;
+const fragment=`
+precision highp float;
+uniform vec2 resolution;
+uniform vec3 camera,look;
+uniform vec4 bodies[9];
+uniform float clockTime,paths;
+varying vec2 unused;
+float hash(vec3 p){p=fract(p*.3183099+vec3(.1,.2,.3));p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
+float noise(vec3 p){
+vec3 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);
+return mix(mix(mix(hash(i),hash(i+vec3(1,0,0)),f.x),mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),
+mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z);}
+float fbm(vec3 p){return noise(p)*.54+noise(p*2.07)*.27+noise(p*4.13)*.13+noise(p*8.31)*.06;}
+float sphere(vec3 ro,vec3 rd,vec4 s){
+vec3 oc=ro-s.xyz;float b=dot(oc,rd),c=dot(oc,oc)-s.w*s.w,h=b*b-c;
+if(h<0.)return 1e5;float t=-b-sqrt(h);return t>.002?t:1e5;}
+vec3 spin(vec3 p,float a){float c=cos(a),s=sin(a);return vec3(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}
+float blob(vec2 uv,vec2 c,vec2 r){vec2 d=uv-c;d.x=mod(d.x+3.141593,6.283186)-3.141593;return 1.-length(d/r);}
+vec3 surface(int id,vec3 n){
+vec3 p=spin(n,clockTime*.055);
+float f=fbm(p*13.),detail=fbm(p*63.);
+if(id==0){float fire=fbm(p*17.+clockTime*.035);return mix(vec3(1.,.22,.025),vec3(1.,.84,.39),fire)*1.65;}
+if(id==1){float cr=pow(abs(noise(p*47.)-.5)*2.,3.);return mix(vec3(.25,.23,.22),vec3(.63,.58,.51),f)*(.86+.22*detail)-cr*.09;}
+if(id==2){float cloud=fbm(vec3(p.x*6.,p.y*17.,p.z*6.));return mix(vec3(.58,.35,.16),vec3(.96,.82,.53),cloud*.8+.2);}
+if(id==3){
+vec2 uv=vec2(atan(p.z,p.x),asin(p.y));
+float land=blob(uv,vec2(-1.75,.68),vec2(.67,.54));
+land=max(land,blob(uv,vec2(-1.10,-.35),vec2(.30,.72)));
+land=max(land,blob(uv,vec2(.32,.19),vec2(.44,.65)));
+land=max(land,blob(uv,vec2(.90,.79),vec2(1.20,.45)));
+land=max(land,blob(uv,vec2(1.92,-.52),vec2(.39,.27)));
+land+= (fbm(p*19.)-.5)*.52;
+vec3 ocean=mix(vec3(.015,.065,.17),vec3(.035,.26,.51),f);
+vec3 ground=mix(vec3(.11,.26,.15),vec3(.48,.40,.21),smoothstep(-.1,.65,p.y)*.65+f*.35);
+vec3 col=mix(ocean,ground,smoothstep(-.025,.025,land));
+col=mix(col,vec3(.87,.92,.91),smoothstep(.87,.96,abs(p.y)+.04*f));
+float clouds=smoothstep(.58,.77,fbm(spin(p,.045*clockTime)*9.+vec3(p.y*4.,0,0)));
+return mix(col,vec3(.94,.96,.97),clouds*.82);}
+if(id==4){vec3 c=mix(vec3(.30,.105,.055),vec3(.79,.39,.20),f);c=mix(c,vec3(.42,.20,.12),smoothstep(.60,.75,fbm(p*6.)));return mix(c,vec3(.82,.77,.64),smoothstep(.94,.985,abs(p.y)));}
+if(id==5){
+float lat=p.y+.037*sin(p.x*13.+p.z*7.)+.025*fbm(p*24.);
+float band=sin(lat*59.)*.5+.5;
+vec3 col=mix(vec3(.53,.32,.21),vec3(.89,.79,.62),smoothstep(.20,.85,band));
+col=mix(col,vec3(.94,.88,.73),smoothstep(.48,.62,sin(lat*24.)*.5+.5)*.48);
+vec2 uv=vec2(atan(p.z,p.x),p.y);float spot=blob(uv,vec2(.65,-.25),vec2(.29,.11));
+col=mix(col,vec3(.67,.24,.12),smoothstep(-.1,.25,spot)*.8);
+return col*(.8+.32*detail);}
+if(id==6){float band=sin((p.y+.009*sin(p.z*20.))*91.)*.5+.5;return mix(vec3(.61,.49,.31),vec3(.93,.84,.63),band*.35+.3+f*.2);}
+if(id==7){return mix(vec3(.24,.57,.64),vec3(.56,.83,.82),f*.4+.35+.035*sin(p.y*40.));}
+float bands=sin(p.y*31.+fbm(p*8.)*.8)*.5+.5;
+return mix(vec3(.045,.13,.48),vec3(.19,.39,.77),.3+bands*.3+f*.2);
+}
+void main(){
+vec2 uv=(gl_FragCoord.xy-.5*resolution)/resolution.y;
+vec3 fw=normalize(look-camera),rt=normalize(cross(fw,vec3(0,1,0))),up=cross(rt,fw);
+vec3 rd=normalize(fw*1.85+rt*uv.x+up*uv.y),ro=camera;
+float neb=pow(fbm(rd*5.+3.),3.);
+vec3 col=vec3(.006,.012,.028)+neb*vec3(.017,.019,.058);
+vec2 sky=vec2(atan(rd.z,rd.x),asin(rd.y))*190.;
+vec2 cell=floor(sky),frac=fract(sky);
+float seed=hash(vec3(cell,3.));
+float star=smoothstep(.10,.0,length(frac-vec2(hash(vec3(cell,1.)),hash(vec3(cell,2.)))));
+star*=step(.93,seed)*(.4+.6*hash(vec3(cell,5.)));
+col+=star*mix(vec3(.49,.65,1.),vec3(1.,.84,.59),seed)*1.7;
+float nearT=1e5;int hit=-1;
+for(int i=0;i<9;i++){float t=sphere(ro,rd,bodies[i]);if(t<nearT){nearT=t;hit=i;}}
+vec3 ringN=normalize(vec3(.20,.91,.36));float denom=dot(rd,ringN);float ringT=1e5,rr=0.;
+if(abs(denom)>.0001){float t=dot(bodies[6].xyz-ro,ringN)/denom;vec3 rp=ro+rd*t-bodies[6].xyz;rr=length(rp)/bodies[6].w;if(t>0.&&rr>1.35&&rr<2.3)ringT=t;}
+if(paths>.5&&abs(rd.y)>.0001){
+float t=-ro.y/rd.y;
+if(t>0.&&t<nearT&&t<ringT){
+float r=length((ro+rd*t).xz),line=0.;
+for(int i=1;i<9;i++){
+float orbit=length(bodies[i].xz),dist=abs(r-orbit);
+line=max(line,1.-smoothstep(.014,.014+t/resolution.y*.6,dist));
+}
+col=mix(col,vec3(.18,.26,.37),line*.44);
+}}
+if(hit>=0){
+vec4 b=vec4(0.);
+for(int i=0;i<9;i++){if(i==hit)b=bodies[i];}
+vec3 pos=ro+rd*nearT,n=normalize(pos-b.xyz),light=normalize(-pos);
+vec3 tex=surface(hit,n);
+float diffuse=max(0.,dot(n,light));
+float ambient=.065;
+if(hit==0)col=tex;
+else{
+col=tex*(ambient+1.35*diffuse);
+float rim=pow(1.-max(0.,dot(n,-rd)),3.5);
+if(hit==3||hit==7||hit==8)col+=vec3(.12,.38,.79)*rim*(.15+.6*diffuse);
+if(hit==3){vec3 halfV=normalize(light-rd);col+=pow(max(0.,dot(n,halfV)),65.)*.26*vec3(.50,.74,1.);}
+}
+}
+if(ringT<nearT){
+vec3 rp=ro+rd*ringT;
+float grain=.60+.18*sin(rr*175.)+.10*sin(rr*413.)+.07*sin(rr*951.);
+float gap=1.-smoothstep(.015,.03,abs(rr-1.96));
+float opacity=clamp(grain,0.,1.)*(1.-gap*.90);
+vec3 light=normalize(-rp);
+float shadow=sphere(rp+light*.03,light,bodies[6])<1e4?.22:1.;
+vec3 ringColor=mix(vec3(.38,.30,.21),vec3(.86,.77,.59),grain)*shadow;
+col=mix(col,ringColor,opacity);
+}
+vec3 sunDir=normalize(-ro);
+float along=dot(-ro,rd);
+float sunMiss=length(cross(-ro,rd));
+if(along>0.&&(hit==0||along<nearT)){
+float glow=exp(-max(0.,sunMiss-bodies[0].w)/2.1);
+if(hit!=0)col+=glow*vec3(1.,.32,.035)*.7;
+col+=pow(max(0.,dot(sunDir,rd)),130.)*vec3(.13,.037,.006);
+}
+col=vec3(1.)-exp(-col*1.22);
+col=pow(col,vec3(.88));
+float vignette=1.-.19*dot(uv,uv);
+gl_FragColor=vec4(col*max(.65,vignette),1.);
+}`;
+function compile(type,src){
+const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);
+if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(s));
+return s;
+}
+let program;
+try{
+program=gl.createProgram();gl.attachShader(program,compile(gl.VERTEX_SHADER,vertex));gl.attachShader(program,compile(gl.FRAGMENT_SHADER,fragment));gl.linkProgram(program);
+if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));
+}catch(e){const el=document.getElementById('error');el.style.display='grid';el.textContent='The 3D renderer could not start. Please try a browser with WebGL enabled.';return;}
+gl.useProgram(program);
+const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW);
+const attr=gl.getAttribLocation(program,'a');gl.enableVertexAttribArray(attr);gl.vertexAttribPointer(attr,2,gl.FLOAT,false,0,0);
+const U={};for(const k of ['resolution','camera','look','bodies[0]','clockTime','paths'])U[k]=gl.getUniformLocation(program,k);
+const names=['Sun','Mercury','Venus','Earth','Mars','Jupiter','Saturn','Uranus','Neptune'];
+const colors=['#ffb83e','#a49788','#e7bc70','#488bcb','#c36b45','#d6b58c','#decd9f','#8cd0d4','#496bd1'];
+const radius=[3.7,.48,.8,.87,.62,2.7,2.2,1.45,1.42];
+const orbit=[0,7,10,14,18,27,37,48,60];
+const phase=[0,.4,2.5,4.1,5.3,3.6,.55,2.1,4.9];
+const captions=[
+'The light at the heart of our journey.',
+'A small world, illuminated in gold.',
+'Wrapped in a veil of warm, swirling clouds.',
+'A familiar blue world, seen from somewhere new.',
+'A quiet world of rust, shadow and light.',
+'Clouds on a magnificent scale.',
+'A world framed by a thousand delicate rings.',
+'A soft turquoise light in the outer darkness.',
+'Deep blue at the edge of our planetary journey.'
+];
+const bar=document.getElementById('planets');
+let focus=-1,paused=false,touring=true,showPaths=true,time=0,rot=0,last=performance.now(),tourElapsed=0;
+let yaw=.35,pitch=.66,distance=143,targetDistance=143;
+let center=[0,0,0],targetCenter=[0,0,0],positions=new Float32Array(36);
+function button(name,index,c){
+const b=document.createElement('button');b.className='planet';b.innerHTML='<span class="dot" style="--c:'+c+'"></span>'+name;b.onclick=()=>select(index,true);b.setAttribute('aria-label',index<0?'View entire solar system':'Explore '+name);bar.appendChild(b);return b;
+}
+const overview=button('Overview',-1,'#ced9f2');overview.classList.add('active');
+const buttons=names.map((n,i)=>button(n,i,colors[i]));
+function mark(){
+overview.classList.toggle('active',focus===-1);
+buttons.forEach((b,i)=>b.classList.toggle('active',i===focus));
+}
+function tourUI(){
+const b=document.getElementById('tour');b.classList.toggle('active',touring);b.textContent=touring?'Tour on':'Start tour';
+document.getElementById('badge').textContent=touring?'AUTOMATIC TOUR':'FREE EXPLORATION';
+}
+function select(i,manual){
+focus=i;
+if(manual){touring=false;tourUI();}
+targetDistance=i<0?143:radius[i]*(i===6?10.4:6.3);
+pitch=i<0?.66:.23;
+if(i===6)pitch=.39;
+yaw=i<0?.35:Math.atan2(positions[i*4+2],positions[i*4])+.55;
+document.getElementById('eyebrow').textContent=i<0?'Our celestial neighbourhood':i===0?'At the centre':'A closer look';
+document.getElementById('title').textContent=i<0?'The solar system.':names[i]+'.';
+document.getElementById('subtitle').innerHTML=i<0?'Eight worlds. One extraordinary journey.<br>Choose a planet, or enjoy the tour.':captions[i];
+mark();
+}
+document.getElementById('tour').onclick=()=>{touring=!touring;tourElapsed=0;tourUI();};
+document.getElementById('play').onclick=()=>{paused=!paused;document.getElementById('play').textContent=paused?'Play':'Pause';};
+document.getElementById('orbits').onclick=()=>{showPaths=!showPaths;document.getElementById('orbits').classList.toggle('active',showPaths);};
+const musicButton=document.getElementById('music'),spaceMusic=document.getElementById('spaceMusic');
+spaceMusic.volume=.55;
+function updateMusicButton(){
+const playing=!spaceMusic.paused;
+musicButton.classList.toggle('active',playing);
+musicButton.setAttribute('aria-pressed',String(playing));
+musicButton.textContent=playing?'♫ Music on':'♫ Music off';
+}
+musicButton.onclick=async()=>{
+if(!spaceMusic.paused){spaceMusic.pause();return;}
+try{await spaceMusic.play();}catch(error){console.warn('Could not play the music file',error);updateMusicButton();}
+};
+spaceMusic.addEventListener('play',updateMusicButton);
+spaceMusic.addEventListener('pause',updateMusicButton);
+document.getElementById('full').onclick=async()=>{
+try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();}
+catch(e){document.getElementById('full').textContent='Use browser full screen';}
+};
+let points=new Map(),pinch=0,dragged=false;
+canvas.onpointerdown=e=>{canvas.setPointerCapture(e.pointerId);points.set(e.pointerId,[e.clientX,e.clientY]);dragged=false;if(points.size===2){let p=[...points.values()];pinch=Math.hypot(p[0][0]-p[1][0],p[0][1]-p[1][1]);}};
+canvas.onpointermove=e=>{
+if(!points.has(e.pointerId))return;
+const old=points.get(e.pointerId);points.set(e.pointerId,[e.clientX,e.clientY]);
+if(points.size===2){
+const p=[...points.values()],v=Math.hypot(p[0][0]-p[1][0],p[0][1]-p[1][1]);
+if(pinch>0)targetDistance*=pinch/Math.max(v,1);pinch=v;
+}else{yaw-=(e.clientX-old[0])*.006;pitch=Math.max(-1.25,Math.min(1.35,pitch+(e.clientY-old[1])*.005));}
+dragged=true;touring=false;tourUI();clampZoom();
+};
+function release(e){points.delete(e.pointerId);pinch=0;}
+canvas.onpointerup=release;canvas.onpointercancel=release;
+function clampZoom(){targetDistance=Math.max(focus<0?14:radius[focus]*2.5,Math.min(focus<0?240:radius[focus]*40,targetDistance));}
+canvas.addEventListener('wheel',e=>{e.preventDefault();targetDistance*=Math.exp(e.deltaY*.001);clampZoom();touring=false;tourUI();},{passive:false});
+function resize(){
+const d=Math.min(window.devicePixelRatio||1,1.5);
+canvas.width=Math.round(innerWidth*d);canvas.height=Math.round(innerHeight*d);gl.viewport(0,0,canvas.width,canvas.height);
+}
+addEventListener('resize',resize);resize();
+const sequence=[-1,6,3,5,4,8,7,2,1,0];
+let tourIndex=0;
+function frame(now){
+const dt=Math.min(.06,(now-last)/1000);last=now;
+if(!paused){time+=dt*Number(document.getElementById('speed').value);rot+=dt;}
+for(let i=0;i<9;i++){
+const a=phase[i]+time*(i===0?0:.50/Math.pow(orbit[i]/7,1.15));
+positions[i*4]=orbit[i]*Math.cos(a);
+positions[i*4+1]=0;
+positions[i*4+2]=orbit[i]*Math.sin(a);
+positions[i*4+3]=radius[i];
+}
+if(touring&&!paused){
+tourElapsed+=dt;
+if(tourElapsed>(focus<0?8:11)){tourElapsed=0;tourIndex=(tourIndex+1)%sequence.length;select(sequence[tourIndex],false);}
+if(focus>=0)yaw+=dt*.035;
+}
+targetCenter=focus<0?[0,0,0]:[positions[focus*4],positions[focus*4+1],positions[focus*4+2]];
+const blend=1-Math.exp(-dt*3.5);
+for(let j=0;j<3;j++)center[j]+=(targetCenter[j]-center[j])*blend;
+distance+=(targetDistance-distance)*blend;
+const camera=[center[0]+distance*Math.cos(pitch)*Math.cos(yaw),center[1]+distance*Math.sin(pitch),center[2]+distance*Math.cos(pitch)*Math.sin(yaw)];
+gl.uniform2f(U.resolution,canvas.width,canvas.height);
+gl.uniform3fv(U.camera,camera);gl.uniform3fv(U.look,center);
+gl.uniform4fv(U['bodies[0]'],positions);gl.uniform1f(U.clockTime,rot);gl.uniform1f(U.paths,showPaths?1:0);
+gl.drawArrays(gl.TRIANGLES,0,6);
+requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
